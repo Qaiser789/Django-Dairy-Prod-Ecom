@@ -14,6 +14,9 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.http import JsonResponse
 from django.db.models import Q
+from django.shortcuts import redirect, HttpResponse
+from django.db import transaction
+
 
 
 # Create your views here.
@@ -249,24 +252,47 @@ class checkout(View):
 
 
 def payment_done(request):
-    order_id=request.GET.get('order_id')
-    payment_id=request.GET.get('payment_id')
-    cust_id=request.GET.get('cust_id')
-    #print("payment_done : oid = ",order_id,"pid = ",payment_id," cid = ",cust_id)
-    user=request.user
-    #return redirect("orders")
-    customer=Customer.objects.get(id=cust_id)
-    #To update payment status and payment id
-    payment=Payment.objects.get(razorpay_order_id=order_id)
-    payment.paid = True
-    payment.razorpay_payment_id = payment_id
-    payment.save()
-    #To save order details
-    cart=Cart.objects.filter(user=user)
-    for c in cart:
-        OrderPlaced(user=user,customer=customer,product=c.product,quantity=c.quantity,payment=payment).save()
-        c.delete()
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        return HttpResponse("User not authenticated!")
+
+    # Get the parameters from the request
+    order_id = request.GET.get('order_id')
+    payment_id = request.GET.get('payment_id')
+    cust_id = request.GET.get('cust_id')
+
+    # Check if any parameter is missing
+    if not (order_id and payment_id and cust_id):
+        return HttpResponse("Missing parameters!")
+
+    user = request.user
+
+    # Start a database transaction
+    with transaction.atomic():
+        # Try fetching the customer
+        try:
+            customer = Customer.objects.get(id=cust_id)
+        except Customer.DoesNotExist:
+            return HttpResponse("Customer not found!")
+
+        # Try fetching the payment and update its status
+        try:
+            payment = Payment.objects.get(razorpay_order_id=order_id)
+            payment.paid = True
+            payment.razorpay_payment_id = payment_id
+            payment.save()
+        except Payment.DoesNotExist:
+            return HttpResponse("Payment not found!")
+
+        # Fetch cart items and place orders
+        cart = Cart.objects.filter(user=user)
+        for c in cart:
+            # You can also wrap this in try-except if there are potential errors here
+            OrderPlaced(user=user, customer=customer, product=c.product, quantity=c.quantity, payment=payment).save()
+            c.delete()
+
     return redirect("orders")
+
 
 
 @login_required
