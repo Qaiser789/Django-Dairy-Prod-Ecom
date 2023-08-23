@@ -2,4 +2,4 @@
 This is Dairy Products Ecommerce Web application.
 
 Take a look :
-QaiserSutar.pythonanywhere.com
+http://qaisersutar.pythonanywhere.com/
